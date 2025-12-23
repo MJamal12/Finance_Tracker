@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Personal Finance Tracker</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Login/Register Screen -->
+    <div id="auth-screen" class="auth-container">
+        <div class="auth-box">
+            <h1>Personal Finance Tracker</h1>
+            
+            <div id="login-form" class="auth-form">
+                <h2>Login</h2>
+                <input type="text" id="login-username" placeholder="Username" required>
+                <input type="password" id="login-password" placeholder="Password" required>
+                <button onclick="login()">Login</button>
+                <p>Don't have an account? <a href="#" onclick="showRegister()">Register</a></p>
+                <p class="demo-info">Demo: username: <strong>demo</strong>, password: <strong>demo123</strong></p>
+            </div>
+            
+            <div id="register-form" class="auth-form" style="display: none;">
+                <h2>Register</h2>
+                <input type="text" id="register-username" placeholder="Username" required>
+                <input type="email" id="register-email" placeholder="Email (optional)">
+                <input type="password" id="register-password" placeholder="Password" required>
+                <button onclick="register()">Register</button>
+                <p>Already have an account? <a href="#" onclick="showLogin()">Login</a></p>
+            </div>
+            
+            <div id="auth-error" class="error-message"></div>
+        </div>
+    </div>
+
+    <!-- Main App Screen -->
+    <div id="app-screen" style="display: none;">
+        <!-- Header -->
+        <header>
+            <div class="container">
+                <h1>💰 Finance Tracker</h1>
+                <div class="header-actions">
+                    <span id="welcome-user"></span>
+                    <button onclick="logout()" class="btn-secondary">Logout</button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="container">
+            <!-- Summary Cards -->
+            <div class="summary-cards">
+                <div class="card summary-card income">
+                    <h3>Total Income</h3>
+                    <div class="amount" id="total-income">$0.00</div>
+                </div>
+                <div class="card summary-card expense">
+                    <h3>Total Expenses</h3>
+                    <div class="amount" id="total-expenses">$0.00</div>
+                </div>
+                <div class="card summary-card balance">
+                    <h3>Balance</h3>
+                    <div class="amount" id="balance">$0.00</div>
+                </div>
+            </div>
+
+            <!-- Date Filter -->
+            <div class="card filters">
+                <h3>Filter Transactions</h3>
+                <div class="filter-controls">
+                    <div>
+                        <label>From:</label>
+                        <input type="date" id="start-date">
+                    </div>
+                    <div>
+                        <label>To:</label>
+                        <input type="date" id="end-date">
+                    </div>
+                    <button onclick="applyFilters()" class="btn-primary">Apply</button>
+                    <button onclick="clearFilters()" class="btn-secondary">Clear</button>
+                    <button onclick="exportCSV()" class="btn-export">Export CSV</button>
+                </div>
+            </div>
+
+            <!-- Charts Section -->
+            <div class="charts-section">
+                <div class="card chart-container">
+                    <h3>Spending by Category</h3>
+                    <canvas id="category-chart"></canvas>
+                </div>
+                <div class="card chart-container">
+                    <h3>Income vs Expenses</h3>
+                    <canvas id="balance-chart"></canvas>
+                </div>
+            </div>
+
+            <!-- Tabs -->
+            <div class="tabs">
+                <button class="tab-button active" onclick="showTab('transactions')">Transactions</button>
+                <button class="tab-button" onclick="showTab('categories')">Categories</button>
+                <button class="tab-button" onclick="showTab('goals')">Savings Goals</button>
+            </div>
+
+            <!-- Transactions Tab -->
+            <div id="transactions-tab" class="tab-content active">
+                <div class="card">
+                    <div class="section-header">
+                        <h3>Add Transaction</h3>
+                    </div>
+                    <form class="transaction-form" onsubmit="addTransaction(event)">
+                        <select id="transaction-category" required>
+                            <option value="">Select Category</option>
+                        </select>
+                        <input type="number" id="transaction-amount" placeholder="Amount" step="0.01" required>
+                        <input type="text" id="transaction-description" placeholder="Description">
+                        <input type="date" id="transaction-date" required>
+                        <button type="submit" class="btn-primary">Add Transaction</button>
+                    </form>
+                </div>
+
+                <div class="card">
+                    <h3>Transaction History</h3>
+                    <div class="transactions-list" id="transactions-list">
+                        <!-- Transactions will be loaded here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Categories Tab -->
+            <div id="categories-tab" class="tab-content">
+                <div class="card">
+                    <h3>Add Category</h3>
+                    <form class="category-form" onsubmit="addCategory(event)">
+                        <input type="text" id="category-name" placeholder="Category Name" required>
+                        <select id="category-type" required>
+                            <option value="">Select Type</option>
+                            <option value="income">Income</option>
+                            <option value="expense">Expense</option>
+                        </select>
+                        <input type="color" id="category-color" value="#3b82f6">
+                        <button type="submit" class="btn-primary">Add Category</button>
+                    </form>
+                </div>
+
+                <div class="card">
+                    <h3>Your Categories</h3>
+                    <div class="categories-list" id="categories-list">
+                        <!-- Categories will be loaded here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Savings Goals Tab -->
+            <div id="goals-tab" class="tab-content">
+                <div class="card">
+                    <h3>Add Savings Goal</h3>
+                    <form class="goal-form" onsubmit="addGoal(event)">
+                        <input type="text" id="goal-name" placeholder="Goal Name" required>
+                        <input type="number" id="goal-target" placeholder="Target Amount" step="0.01" required>
+                        <input type="number" id="goal-current" placeholder="Current Amount" step="0.01" value="0">
+                        <input type="date" id="goal-deadline" placeholder="Deadline">
+                        <button type="submit" class="btn-primary">Add Goal</button>
+                    </form>
+                </div>
+
+                <div class="card">
+                    <h3>Your Savings Goals</h3>
+                    <div class="goals-list" id="goals-list">
+                        <!-- Goals will be loaded here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Weekly Summary -->
+            <div class="card">
+                <h3>Weekly Summary</h3>
+                <div id="weekly-summary" class="weekly-summary">
+                    <!-- Weekly summary will be displayed here -->
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <p>&copy; 2025 Personal Finance Tracker</p>
+        </footer>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

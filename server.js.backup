@@ -1,0 +1,355 @@
+const express = require('express');
+const session = require('express-session');
+const bodyParser = require('body-parser');
+const bcrypt = require('bcryptjs');
+const Database = require('better-sqlite3');
+const path = require('path');
+
+const app = express();
+const PORT = 3000;
+const db = new Database('finance_tracker.db');
+
+// Middleware
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
+app.use(express.static('public'));
+app.use(session({
+  secret: 'finance-tracker-secret-key-change-in-production',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { maxAge: 24 * 60 * 60 * 1000 } // 24 hours
+}));
+
+// Authentication middleware
+function requireAuth(req, res, next) {
+  if (req.session.userId) {
+    next();
+  } else {
+    res.status(401).json({ error: 'Unauthorized' });
+  }
+}
+
+// ============ AUTH ROUTES ============
+
+// Login
+app.post('/api/login', (req, res) => {
+  const { username, password } = req.body;
+  
+  try {
+    const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
+    
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+    
+    const validPassword = bcrypt.compareSync(password, user.password_hash);
+    
+    if (!validPassword) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+    
+    req.session.userId = user.id;
+    req.session.username = user.username;
+    
+    res.json({ 
+      success: true, 
+      user: { id: user.id, username: user.username, email: user.email }
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Register
+app.post('/api/register', (req, res) => {
+  const { username, password, email } = req.body;
+  
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username and password required' });
+  }
+  
+  try {
+    const passwordHash = bcrypt.hashSync(password, 10);
+    const stmt = db.prepare('INSERT INTO users (username, password_hash, email) VALUES (?, ?, ?)');
+    const result = stmt.run(username, passwordHash, email);
+    
+    req.session.userId = result.lastInsertRowid;
+    req.session.username = username;
+    
+    // Create default categories for new user
+    const defaultCategories = [
+      { name: 'Salary', type: 'income', color: '#10b981' },
+      { name: 'Groceries', type: 'expense', color: '#ef4444' },
+      { name: 'Transportation', type: 'expense', color: '#f59e0b' },
+      { name: 'Entertainment', type: 'expense', color: '#8b5cf6' }
+    ];
+    
+    const catStmt = db.prepare('INSERT INTO categories (user_id, name, type, color) VALUES (?, ?, ?, ?)');
+    defaultCategories.forEach(cat => {
+      catStmt.run(result.lastInsertRowid, cat.name, cat.type, cat.color);
+    });
+    
+    res.json({ success: true, user: { id: result.lastInsertRowid, username, email } });
+  } catch (error) {
+    if (error.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+      res.status(400).json({ error: 'Username already exists' });
+    } else {
+      res.status(500).json({ error: 'Server error' });
+    }
+  }
+});
+
+// Logout
+app.post('/api/logout', (req, res) => {
+  req.session.destroy();
+  res.json({ success: true });
+});
+
+// Check auth status
+app.get('/api/auth/status', (req, res) => {
+  if (req.session.userId) {
+    res.json({ authenticated: true, username: req.session.username });
+  } else {
+    res.json({ authenticated: false });
+  }
+});
+
+// ============ CATEGORY ROUTES ============
+
+// Get all categories
+app.get('/api/categories', requireAuth, (req, res) => {
+  try {
+    const categories = db.prepare('SELECT * FROM categories WHERE user_id = ? ORDER BY name').all(req.session.userId);
+    res.json(categories);
+  } catch (error) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Create category
+app.post('/api/categories', requireAuth, (req, res) => {
+  const { name, type, color } = req.body;
+  
+  try {
+    const stmt = db.prepare('INSERT INTO categories (user_id, name, type, color) VALUES (?, ?, ?, ?)');
+    const result = stmt.run(req.session.userId, name, type, color || '#3b82f6');
+    
+    res.json({ success: true, id: result.lastInsertRowid });
+  } catch (error) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Delete category
+app.delete('/api/categories/:id', requireAuth, (req, res) => {
+  try {
+    const stmt = db.prepare('DELETE FROM categories WHERE id = ? AND user_id = ?');
+    stmt.run(req.params.id, req.session.userId);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ============ TRANSACTION ROUTES ============
+
+// Get all transactions
+app.get('/api/transactions', requireAuth, (req, res) => {
+  const { startDate, endDate } = req.query;
+  
+  try {
+    let query = `
+      SELECT t.*, c.name as category_name, c.type as category_type, c.color as category_color
+      FROM transactions t
+      JOIN categories c ON t.category_id = c.id
+      WHERE t.user_id = ?
+    `;
+    const params = [req.session.userId];
+    
+    if (startDate) {
+      query += ' AND t.date >= ?';
+      params.push(startDate);
+    }
+    if (endDate) {
+      query += ' AND t.date <= ?';
+      params.push(endDate);
+    }
+    
+    query += ' ORDER BY t.date DESC, t.created_at DESC';
+    
+    const transactions = db.prepare(query).all(...params);
+    res.json(transactions);
+  } catch (error) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Create transaction
+app.post('/api/transactions', requireAuth, (req, res) => {
+  const { category_id, amount, description, date } = req.body;
+  
+  try {
+    const stmt = db.prepare('INSERT INTO transactions (user_id, category_id, amount, description, date) VALUES (?, ?, ?, ?, ?)');
+    const result = stmt.run(req.session.userId, category_id, amount, description, date);
+    
+    res.json({ success: true, id: result.lastInsertRowid });
+  } catch (error) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Delete transaction
+app.delete('/api/transactions/:id', requireAuth, (req, res) => {
+  try {
+    const stmt = db.prepare('DELETE FROM transactions WHERE id = ? AND user_id = ?');
+    stmt.run(req.params.id, req.session.userId);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Get summary statistics
+app.get('/api/summary', requireAuth, (req, res) => {
+  const { startDate, endDate } = req.query;
+  
+  try {
+    let query = `
+      SELECT 
+        c.type,
+        SUM(t.amount) as total
+      FROM transactions t
+      JOIN categories c ON t.category_id = c.id
+      WHERE t.user_id = ?
+    `;
+    const params = [req.session.userId];
+    
+    if (startDate) {
+      query += ' AND t.date >= ?';
+      params.push(startDate);
+    }
+    if (endDate) {
+      query += ' AND t.date <= ?';
+      params.push(endDate);
+    }
+    
+    query += ' GROUP BY c.type';
+    
+    const results = db.prepare(query).all(...params);
+    
+    const summary = {
+      income: 0,
+      expense: 0,
+      balance: 0
+    };
+    
+    results.forEach(row => {
+      if (row.type === 'income') {
+        summary.income = row.total;
+      } else {
+        summary.expense = row.total;
+      }
+    });
+    
+    summary.balance = summary.income - summary.expense;
+    
+    res.json(summary);
+  } catch (error) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Get spending by category
+app.get('/api/spending-by-category', requireAuth, (req, res) => {
+  const { startDate, endDate } = req.query;
+  
+  try {
+    let query = `
+      SELECT 
+        c.name,
+        c.color,
+        SUM(t.amount) as total
+      FROM transactions t
+      JOIN categories c ON t.category_id = c.id
+      WHERE t.user_id = ? AND c.type = 'expense'
+    `;
+    const params = [req.session.userId];
+    
+    if (startDate) {
+      query += ' AND t.date >= ?';
+      params.push(startDate);
+    }
+    if (endDate) {
+      query += ' AND t.date <= ?';
+      params.push(endDate);
+    }
+    
+    query += ' GROUP BY c.id, c.name, c.color ORDER BY total DESC';
+    
+    const results = db.prepare(query).all(...params);
+    res.json(results);
+  } catch (error) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ============ SAVINGS GOALS ROUTES ============
+
+// Get all savings goals
+app.get('/api/savings-goals', requireAuth, (req, res) => {
+  try {
+    const goals = db.prepare('SELECT * FROM savings_goals WHERE user_id = ? ORDER BY created_at DESC').all(req.session.userId);
+    res.json(goals);
+  } catch (error) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Create savings goal
+app.post('/api/savings-goals', requireAuth, (req, res) => {
+  const { name, target_amount, current_amount, deadline } = req.body;
+  
+  try {
+    const stmt = db.prepare('INSERT INTO savings_goals (user_id, name, target_amount, current_amount, deadline) VALUES (?, ?, ?, ?, ?)');
+    const result = stmt.run(req.session.userId, name, target_amount, current_amount || 0, deadline);
+    
+    res.json({ success: true, id: result.lastInsertRowid });
+  } catch (error) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Update savings goal
+app.put('/api/savings-goals/:id', requireAuth, (req, res) => {
+  const { current_amount } = req.body;
+  
+  try {
+    const stmt = db.prepare('UPDATE savings_goals SET current_amount = ? WHERE id = ? AND user_id = ?');
+    stmt.run(current_amount, req.params.id, req.session.userId);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Delete savings goal
+app.delete('/api/savings-goals/:id', requireAuth, (req, res) => {
+  try {
+    const stmt = db.prepare('DELETE FROM savings_goals WHERE id = ? AND user_id = ?');
+    stmt.run(req.params.id, req.session.userId);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Serve main page
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Start server
+app.listen(PORT, () => {
+  console.log(`Finance Tracker running on http://localhost:${PORT}`);
+  console.log('Demo account - username: demo, password: demo123');
+});
