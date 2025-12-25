@@ -89,50 +89,66 @@ const initDB = () => {
               ];
               
               const categoryIds = {};
+              let categoriesInserted = 0;
               
               // Insert categories
-              defaultCategories.forEach((cat, index) => {
+              defaultCategories.forEach((cat) => {
                 db.run('INSERT INTO categories (user_id, name, type, color) VALUES (?, ?, ?, ?)',
                   [demoUserId, cat.name, cat.type, cat.color], function(err) {
-                    if (!err) {
-                      categoryIds[cat.name] = this.lastID;
+                    if (err) {
+                      console.error('Error inserting category:', cat.name, err);
+                      return;
+                    }
+                    categoryIds[cat.name] = this.lastID;
+                    categoriesInserted++;
+                    console.log(`Category ${cat.name} inserted with ID ${this.lastID}`);
+                    
+                    // After all categories are inserted, add sample transactions
+                    if (categoriesInserted === defaultCategories.length) {
+                      console.log('All categories inserted, adding sample data...');
+                      // Sample transactions for the current month
+                      const currentDate = new Date();
+                      const year = currentDate.getFullYear();
+                      const month = String(currentDate.getMonth() + 1).padStart(2, '0');
                       
-                      // After all categories are inserted, add sample transactions
-                      if (index === defaultCategories.length - 1) {
-                        setTimeout(() => {
-                          // Sample transactions for the current month
-                          const currentDate = new Date();
-                          const year = currentDate.getFullYear();
-                          const month = String(currentDate.getMonth() + 1).padStart(2, '0');
-                          
-                          const sampleTransactions = [
-                            { category: 'Salary', amount: 5000, description: 'Monthly salary', date: `${year}-${month}-01` },
-                            { category: 'Freelance', amount: 800, description: 'Website project', date: `${year}-${month}-05` },
-                            { category: 'Groceries', amount: -120.50, description: 'Weekly groceries', date: `${year}-${month}-03` },
-                            { category: 'Groceries', amount: -95.30, description: 'Supermarket', date: `${year}-${month}-10` },
-                            { category: 'Transportation', amount: -45, description: 'Gas', date: `${year}-${month}-02` },
-                            { category: 'Transportation', amount: -50, description: 'Metro card', date: `${year}-${month}-08` },
-                            { category: 'Entertainment', amount: -25, description: 'Movie tickets', date: `${year}-${month}-06` },
-                            { category: 'Entertainment', amount: -60, description: 'Concert', date: `${year}-${month}-15` },
-                            { category: 'Utilities', amount: -150, description: 'Electricity bill', date: `${year}-${month}-05` },
-                            { category: 'Dining Out', amount: -45.80, description: 'Restaurant', date: `${year}-${month}-07` },
-                            { category: 'Dining Out', amount: -32.50, description: 'Coffee and lunch', date: `${year}-${month}-12` }
-                          ];
-                          
-                          sampleTransactions.forEach(trans => {
-                            const catId = categoryIds[trans.category];
-                            if (catId) {
-                              db.run('INSERT INTO transactions (user_id, category_id, amount, description, date) VALUES (?, ?, ?, ?, ?)',
-                                [demoUserId, catId, trans.amount, trans.description, trans.date]);
-                            }
-                          });
-                          
-                          // Add a sample goal
-                          db.run('INSERT INTO goals (user_id, name, target_amount, current_amount, deadline) VALUES (?, ?, ?, ?, ?)',
-                            [demoUserId, 'Emergency Fund', 10000, 3500, `${year}-12-31`]);
-                          
-                          console.log('Demo user created with sample data');
-                        }, 100);
+                      const sampleTransactions = [
+                        { category: 'Salary', amount: 5000, description: 'Monthly salary', date: `${year}-${month}-01` },
+                        { category: 'Freelance', amount: 800, description: 'Website project', date: `${year}-${month}-05` },
+                        { category: 'Groceries', amount: -120.50, description: 'Weekly groceries', date: `${year}-${month}-03` },
+                        { category: 'Groceries', amount: -95.30, description: 'Supermarket', date: `${year}-${month}-10` },
+                        { category: 'Transportation', amount: -45, description: 'Gas', date: `${year}-${month}-02` },
+                        { category: 'Transportation', amount: -50, description: 'Metro card', date: `${year}-${month}-08` },
+                        { category: 'Entertainment', amount: -25, description: 'Movie tickets', date: `${year}-${month}-06` },
+                        { category: 'Entertainment', amount: -60, description: 'Concert', date: `${year}-${month}-15` },
+                        { category: 'Utilities', amount: -150, description: 'Electricity bill', date: `${year}-${month}-05` },
+                        { category: 'Dining Out', amount: -45.80, description: 'Restaurant', date: `${year}-${month}-07` },
+                        { category: 'Dining Out', amount: -32.50, description: 'Coffee and lunch', date: `${year}-${month}-12` }
+                      ];
+                      
+                      sampleTransactions.forEach(trans => {
+                        const catId = categoryIds[trans.category];
+                        if (catId) {
+                          db.run('INSERT INTO transactions (user_id, category_id, amount, description, date) VALUES (?, ?, ?, ?, ?)',
+                            [demoUserId, catId, trans.amount, trans.description, trans.date], function(err) {
+                              if (err) {
+                                console.error('Error inserting transaction:', trans.description, err);
+                              }
+                            });
+                        } else {
+                          console.error('Category not found for transaction:', trans.category);
+                        }
+                      });
+                      
+                      // Add a sample goal
+                      db.run('INSERT INTO goals (user_id, name, target_amount, current_amount, deadline) VALUES (?, ?, ?, ?, ?)',
+                        [demoUserId, 'Emergency Fund', 10000, 3500, `${year}-12-31`], function(err) {
+                          if (err) {
+                            console.error('Error inserting goal:', err);
+                          } else {
+                            console.log('Demo user created with sample data');
+                          }
+                        });
+                    }
                       }
                     }
                   });
