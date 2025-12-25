@@ -47,19 +47,22 @@ A full-stack web application for tracking personal expenses, managing budgets, a
    npm install
    ```
 
-3. **Initialize the database**
-   ```bash
-   npm run init-db
-   ```
-   This creates the SQLite database with tables and a demo account.
-
-4. **Start the server**
+3. **Start the server**
    ```bash
    npm start
    ```
+   The database will be automatically initialized on first run with tables and a demo account.
 
-5. **Open your browser**
+4. **Open your browser**
    Navigate to `http://localhost:3000`
+
+## Deployment
+
+This app is production-ready and can be deployed to platforms like Render, Heroku, or Railway.
+
+**Live Demo:** https://finance-tracker-mjamal.onrender.com
+
+The database initializes automatically on startup, creating tables and a demo user with sample transaction data.
 
 ## Usage
 
@@ -117,7 +120,7 @@ Finance_Tracker/
 │   ├── styles.css      # CSS styling
 │   └── app.js          # Frontend JavaScript
 ├── server.js           # Express server & API routes
-├── init-db.js          # Database initialization script
+├── database.js         # Database wrapper functions
 ├── package.json        # Dependencies
 ├── .gitignore          # Git ignore rules
 └── README.md           # This file
@@ -196,14 +199,10 @@ Finance_Tracker/
 ### Making Changes
 1. Edit files in `public/` for frontend changes
 2. Edit `server.js` for backend/API changes
-3. Restart server to see changes (or use `npm run dev`)
+3. Restart server to see changes
 
 ### Database Reset
-To reset the database:
-```bash
-rm finance_tracker.db
-npm run init-db
-```
+To reset the database, delete `finance_tracker.db` and restart the server. The database will be automatically recreated with the demo user and sample data.
 
 ## Future Enhancements
 
@@ -223,11 +222,14 @@ Potential features to add:
 - Change PORT in `server.js` (default is 3000)
 
 **Database errors**
-- Delete `finance_tracker.db` and run `npm run init-db` again
+- Delete `finance_tracker.db` and restart the server. The database will be automatically recreated.
 
 **Charts not displaying**
 - Ensure Chart.js CDN is accessible
 - Check browser console for errors
+
+**Demo user login issues**
+- The demo user (username: demo, password: demo123) is automatically created on first startup with sample transaction data
 
 ## License
 
