@@ -4,9 +4,92 @@ const bodyParser = require('body-parser');
 const bcrypt = require('bcryptjs');
 const path = require('path');
 const { dbGet, dbAll, dbRun } = require('./database');
+const sqlite3 = require('sqlite3').verbose();
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
+
+// Initialize database tables on startup
+const initDB = () => {
+  const db = new sqlite3.Database('finance_tracker.db');
+  
+  db.serialize(() => {
+    // Create users table
+    db.run(`CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      email TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`);
+
+    // Create categories table
+    db.run(`CREATE TABLE IF NOT EXISTS categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      type TEXT CHECK(type IN ('income', 'expense')) NOT NULL,
+      color TEXT DEFAULT '#3b82f6',
+      FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+    )`);
+
+    // Create transactions table
+    db.run(`CREATE TABLE IF NOT EXISTS transactions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      category_id INTEGER NOT NULL,
+      amount REAL NOT NULL,
+      description TEXT,
+      date DATE NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+      FOREIGN KEY (category_id) REFERENCES categories (id) ON DELETE CASCADE
+    )`);
+
+    // Create goals table
+    db.run(`CREATE TABLE IF NOT EXISTS goals (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      target_amount REAL NOT NULL,
+      current_amount REAL DEFAULT 0,
+      deadline DATE,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+    )`);
+
+    // Create demo user if it doesn't exist
+    db.get('SELECT * FROM users WHERE username = ?', ['demo'], (err, user) => {
+      if (!user) {
+        const passwordHash = bcrypt.hashSync('demo123', 10);
+        db.run('INSERT INTO users (username, password_hash, email) VALUES (?, ?, ?)',
+          ['demo', passwordHash, 'demo@example.com'], function(err) {
+            if (!err) {
+              const demoUserId = this.lastID;
+              // Add default categories for demo user
+              const defaultCategories = [
+                { name: 'Salary', type: 'income', color: '#10b981' },
+                { name: 'Groceries', type: 'expense', color: '#ef4444' },
+                { name: 'Transportation', type: 'expense', color: '#f59e0b' },
+                { name: 'Entertainment', type: 'expense', color: '#8b5cf6' }
+              ];
+              
+              defaultCategories.forEach(cat => {
+                db.run('INSERT INTO categories (user_id, name, type, color) VALUES (?, ?, ?, ?)',
+                  [demoUserId, cat.name, cat.type, cat.color]);
+              });
+              console.log('Demo user created successfully');
+            }
+          });
+      }
+    });
+  });
+  
+  db.close();
+};
+
+// Initialize database
+initDB();
 
 // Middleware
 app.use(bodyParser.json());
@@ -329,27 +412,6 @@ app.get('/', (req, res) => {
 });
 
 // Start server
-const PORT = process.env.PORT || 3000;
-
-// Initialize database on startup
-const initializeDatabase = async () => {
-  try {
-    // Run init-db logic
-    const { exec } = require('child_process');
-    exec('node init-db.js', (error, stdout, stderr) => {
-      if (error) {
-        console.error('Database initialization error:', error);
-      } else {
-        console.log('Database initialized successfully');
-      }
-    });
-  } catch (error) {
-    console.error('Failed to initialize database:', error);
-  }
-};
-
-initializeDatabase();
-
 app.listen(PORT, () => {
   console.log(`Finance Tracker running on port ${PORT}`);
   console.log('Demo account - username: demo, password: demo123');
