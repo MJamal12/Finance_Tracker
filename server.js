@@ -60,32 +60,93 @@ const initDB = () => {
 
     // Create demo user if it doesn't exist
     db.get('SELECT * FROM users WHERE username = ?', ['demo'], (err, user) => {
+      if (err) {
+        console.error('Error checking for demo user:', err);
+        return;
+      }
       if (!user) {
         const passwordHash = bcrypt.hashSync('demo123', 10);
+        console.log('Creating demo user...');
         db.run('INSERT INTO users (username, password_hash, email) VALUES (?, ?, ?)',
           ['demo', passwordHash, 'demo@example.com'], function(err) {
+            if (err) {
+              console.error('Error creating demo user:', err);
+              return;
+            }
             if (!err) {
               const demoUserId = this.lastID;
+              console.log('Demo user created with ID:', demoUserId);
+              
               // Add default categories for demo user
               const defaultCategories = [
                 { name: 'Salary', type: 'income', color: '#10b981' },
+                { name: 'Freelance', type: 'income', color: '#14b8a6' },
                 { name: 'Groceries', type: 'expense', color: '#ef4444' },
                 { name: 'Transportation', type: 'expense', color: '#f59e0b' },
-                { name: 'Entertainment', type: 'expense', color: '#8b5cf6' }
+                { name: 'Entertainment', type: 'expense', color: '#8b5cf6' },
+                { name: 'Utilities', type: 'expense', color: '#06b6d4' },
+                { name: 'Dining Out', type: 'expense', color: '#ec4899' }
               ];
               
-              defaultCategories.forEach(cat => {
+              const categoryIds = {};
+              
+              // Insert categories
+              defaultCategories.forEach((cat, index) => {
                 db.run('INSERT INTO categories (user_id, name, type, color) VALUES (?, ?, ?, ?)',
-                  [demoUserId, cat.name, cat.type, cat.color]);
+                  [demoUserId, cat.name, cat.type, cat.color], function(err) {
+                    if (!err) {
+                      categoryIds[cat.name] = this.lastID;
+                      
+                      // After all categories are inserted, add sample transactions
+                      if (index === defaultCategories.length - 1) {
+                        setTimeout(() => {
+                          // Sample transactions for the current month
+                          const currentDate = new Date();
+                          const year = currentDate.getFullYear();
+                          const month = String(currentDate.getMonth() + 1).padStart(2, '0');
+                          
+                          const sampleTransactions = [
+                            { category: 'Salary', amount: 5000, description: 'Monthly salary', date: `${year}-${month}-01` },
+                            { category: 'Freelance', amount: 800, description: 'Website project', date: `${year}-${month}-05` },
+                            { category: 'Groceries', amount: -120.50, description: 'Weekly groceries', date: `${year}-${month}-03` },
+                            { category: 'Groceries', amount: -95.30, description: 'Supermarket', date: `${year}-${month}-10` },
+                            { category: 'Transportation', amount: -45, description: 'Gas', date: `${year}-${month}-02` },
+                            { category: 'Transportation', amount: -50, description: 'Metro card', date: `${year}-${month}-08` },
+                            { category: 'Entertainment', amount: -25, description: 'Movie tickets', date: `${year}-${month}-06` },
+                            { category: 'Entertainment', amount: -60, description: 'Concert', date: `${year}-${month}-15` },
+                            { category: 'Utilities', amount: -150, description: 'Electricity bill', date: `${year}-${month}-05` },
+                            { category: 'Dining Out', amount: -45.80, description: 'Restaurant', date: `${year}-${month}-07` },
+                            { category: 'Dining Out', amount: -32.50, description: 'Coffee and lunch', date: `${year}-${month}-12` }
+                          ];
+                          
+                          sampleTransactions.forEach(trans => {
+                            const catId = categoryIds[trans.category];
+                            if (catId) {
+                              db.run('INSERT INTO transactions (user_id, category_id, amount, description, date) VALUES (?, ?, ?, ?, ?)',
+                                [demoUserId, catId, trans.amount, trans.description, trans.date]);
+                            }
+                          });
+                          
+                          // Add a sample goal
+                          db.run('INSERT INTO goals (user_id, name, target_amount, current_amount, deadline) VALUES (?, ?, ?, ?, ?)',
+                            [demoUserId, 'Emergency Fund', 10000, 3500, `${year}-12-31`]);
+                          
+                          console.log('Demo user created with sample data');
+                        }, 100);
+                      }
+                    }
+                  });
               });
-              console.log('Demo user created successfully');
             }
           });
+      } else {
+        console.log('Demo user already exists');
       }
     });
   });
   
-  db.close();
+  // Don't close db here - let async operations complete
+  // db will be closed when the process exits
 };
 
 // Initialize database
@@ -94,7 +155,7 @@ initDB();
 // Middleware
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, 'public')));
 app.use(session({
   secret: 'finance-tracker-secret-key-change-in-production',
   resave: false,
