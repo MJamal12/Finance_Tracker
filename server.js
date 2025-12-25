@@ -329,7 +329,28 @@ app.get('/', (req, res) => {
 });
 
 // Start server
+const PORT = process.env.PORT || 3000;
+
+// Initialize database on startup
+const initializeDatabase = async () => {
+  try {
+    // Run init-db logic
+    const { exec } = require('child_process');
+    exec('node init-db.js', (error, stdout, stderr) => {
+      if (error) {
+        console.error('Database initialization error:', error);
+      } else {
+        console.log('Database initialized successfully');
+      }
+    });
+  } catch (error) {
+    console.error('Failed to initialize database:', error);
+  }
+};
+
+initializeDatabase();
+
 app.listen(PORT, () => {
-  console.log(`Finance Tracker running on http://localhost:${PORT}`);
+  console.log(`Finance Tracker running on port ${PORT}`);
   console.log('Demo account - username: demo, password: demo123');
 });
